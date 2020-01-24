@@ -17,7 +17,7 @@
 #include "nsfb.h"
 #include "plot.h"
 
-#define UNUSED __attribute__((unused))
+#define UNUSED
 
 
 /**

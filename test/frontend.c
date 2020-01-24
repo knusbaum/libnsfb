@@ -6,6 +6,17 @@
 #include "libnsfb.h"
 #include "libnsfb_event.h"
 
+extern void ram_register_surface(void);
+extern void plan9_register_surface(void);
+
+void
+init_libs(void)
+{
+	ram_register_surface();
+	plan9_register_surface();	
+}
+
+
 int main(int argc, char **argv)
 {
     nsfb_t *nsfb;
@@ -15,8 +26,10 @@ int main(int argc, char **argv)
 
     int waitloop = 3;
 
+    init_libs();
+
     if (argc < 2) {
-        fename="sdl";
+        fename="plan9";
     } else {
         fename = argv[1];
     }

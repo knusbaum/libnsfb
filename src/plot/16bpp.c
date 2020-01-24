@@ -17,7 +17,7 @@
 #include "nsfb.h"
 #include "plot.h"
 
-#define UNUSED __attribute__((unused)) 
+#define UNUSED
 
 static inline uint16_t *get_xy_loc(nsfb_t *nsfb, int x, int y)
 {

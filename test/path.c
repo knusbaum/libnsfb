@@ -15,6 +15,16 @@
     path[count].point.y = (yco);                        \
     count++
 
+extern void ram_register_surface(void);
+extern void plan9_register_surface(void);
+
+void
+init_libs(void)
+{
+	ram_register_surface();
+	plan9_register_surface();	
+}
+
 static int fill_shape(nsfb_plot_pathop_t *path, int xoff, int yoff) 
 {
     int count = 0;
@@ -52,8 +62,10 @@ int main(int argc, char **argv)
     nsfb_plot_pen_t pen;
     nsfb_plot_pathop_t path[20];
 
+    init_libs();
+
     if (argc < 2) {
-        fename="sdl";
+        fename="plan9";
     } else {
         fename = argv[1];
     }

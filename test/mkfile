@@ -1,0 +1,30 @@
+</$objtype/mkfile
+
+CC=pcc
+DST=$O.frontend $O.polygon $O.polystar $O.plottest $O.text-speed $O.bitmap $O.path $O.rgb
+
+HFILES=\
+	../include/libnsfb.h ../include/libnsfb_cursor.h ../include/libnsfb_event.h \
+	../include/libnsfb_plot.h ../include/libnsfb_plot_util.h
+
+
+CFLAGS=-I ../include -I . -I ../../posix/include \
+	-D_POSIX_SOURCE -D_RESEARCH_SOURCE
+
+LIB=../src/libnsfb.$O.a
+
+
+all:V:	$DST	
+
+$O.%:	%.$O nsglobe.$O $HFILES $LIB
+	$CC -o $target $CFLAGS  $stem.$O nsglobe.$O $LIB
+
+%.$O:	$HFILES
+
+%.$O:	%.c
+	$CC -c $CFLAGS $stem.c
+
+clean:V:
+	rm -f $DST frontend.$O polygon.$O polystar.$O plottest.$O text-speed.$O rgb.$O \
+	bitmap.$O globe.$O nsglobe.$O path.$O
+

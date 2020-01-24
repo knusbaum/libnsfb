@@ -1,0 +1,26 @@
+</$objtype/mkfile
+
+CC=pcc
+OBJ=cursor.$O dump.$O libnsfb.$O palette.$O \
+	plot/api.$O plot/util.$O plot/generic.$O plot/32bpp-xrgb8888.$O \
+	plot/32bpp-xbgr8888.$O plot/16bpp.$O plot/8bpp.$O \
+	surface/surface.$O surface/ram.$O surface/plan9.$O
+
+HFILES=nsfb.h palette.h plot.h surface.h \
+	../include/libnsfb.h ../include/libnsfb_cursor.h ../include/libnsfb_event.h \
+	../include/libnsfb_plot.h ../include/libnsfb_plot_util.h
+
+# ../../libnsutils-0.0.5/include/nsutils
+CFLAGS=-I ../include -I . -I ../../posix/include \
+	-D_BSD_EXTENSION -D_SUSV2_SOURCE -D_POSIX_SOURCE -D_C99_SNPRINTF_EXTENSION
+
+all:V:	libnsfb.$O.a
+
+libnsfb.$O.a: $OBJ $HFILES
+	ar rv libnsfb.$O.a $OBJ
+
+%.$O:	%.c $HFILES
+	$CC $CFLAGS -c -o $target $stem.c
+
+clean:V:
+	rm -f $OBJ libnsfb.$O.a

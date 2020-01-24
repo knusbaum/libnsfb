@@ -1,0 +1,91 @@
+Implementation of the surface in plan9.c:
+
+* The callback plan9_input() is called with a timeout
+value. When the timeout is set to, say 1000 ms, the
+driver is expected to return 'no event' after 1 second,
+if no event has occured during the time. This is a
+nifty feature in a non-threaded program, as it doesn't
+comsume too much cpu resources busy-waiting, but it
+is also snappy, as the sleep is interrupted as soon as
+an event occurs.
+
+Plan 9 does have the ability to wait for both an input
+event and a timer, using etimer() and event(), but
+alas, etimer() doesn't work under APE. There might be
+different solution around this problem:
+
+1) fork a separate heartbeat process, that writes to
+a filedescriptor every second or so. With estart()
+this file descriptor can be bound into the event
+loop.
+
+2) Instead of letting einit() open the mouse and keyboard
+devices, handle them ourselves (as files) and use
+Posix select() to wait on both, including the timer
+that is included in the select api. Routines for
+handling the keyboard and mouse can found in libdraw.
+
+3) Realise that mixing Plan 9 native calls with Posix
+can be problematic, and create a file server that
+handles all user I/O (keyboard, mouse and display).
+This might have other advantages further down the
+road, but it might be slow, especially for the
+framebuffer, that transfers raw images (like VNC).
+It would probably work better for the native GUI,
+that uses higher level draw primitives.
+
+4) Encapsulate only the event handelling (mouse,
+keyboard and timer) - i.e. not the display - in a
+separate process/filserver, that the FB surface driver
+can read from. It don't know whether it is easy to
+direct input events to one process, while output
+events comes from another. Maybe solution 3) better.
+
+5) The current, quick-and-dirty solution:
+Divide the timout value into chunks of 250 seconds,
+and interleave checking and sleeping for the total
+amount of the timeout, returning an event as soon
+as it is discovered. In this way, the process spends
+most of its time sleeping, and reacts fairly quikly
+(after 250 ms) to input events. The values might be
+adjusted. Not perfect, but simple.
+
+
+* In the current incarnation, one Plan 9 event (keyboard
+or mouse) is translated to one NSFB-event. This is a
+simple solution, but has some drawbacks. For the mouse,
+an 'Emouse' event in Plan 9 contains both mouse button
+and mouse movment information, and as well as information
+on all buttons in one message. To do things properly, an
+Emouse has to be translated to multiple NSFB events, for
+different keypresses/releases and for movement. The most
+straight forward way would be to have a small buffer of
+events in 'drawstate' (the structure that holds the
+state of the framebuffer), and that plan9_input() would as a
+first thing check if there are buffered events to send
+before trying to check for new events, all without sleeping.
+All this because Netsurf only expect one event at a time.
+
+For the keyboard, it is the opposite. Plan 9 does by
+default only send events on key presses, not on key
+releases. There should be a supported way in 9front to
+read both presses/releases (source the Doom port).
+Is keeping track of key releases needed anywhere in
+Netsurf? If not, it might be enough to send only
+events on keypresses (the current behaviour) or to
+send two events after each other for keypress and
+keyrelease, using the buffereing technique described
+for mouse events above. Maybe this is needed for
+uppercase letters, or for key repetition. Let's see!
+
+
+* In the original libnsfb, there are static constructors
+for each surface (e.g. ram_register_surface() that are
+called automatically, before the invocation of main().
+This is only supported in ELF executables, and as Plan 9
+uses the simpler a.out format, i have opted to export the
+registering functions, and the client of the library.
+This is done in framebuffer/gui.c:init_libs() which calls:
+
+ram_register_surface();
+plan9_register_surface();

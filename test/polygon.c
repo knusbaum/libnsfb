@@ -11,6 +11,15 @@
 
 #define UNUSED(x) ((x) = (x))
 
+extern void ram_register_surface(void);
+extern void plan9_register_surface(void);
+
+void
+init_libs(void)
+{
+	ram_register_surface();
+	plan9_register_surface();	
+}
 
 int main(int argc, char **argv)
 {
@@ -19,6 +28,8 @@ int main(int argc, char **argv)
     nsfb_t *nsfb;
     nsfb_event_t event;
     int waitloop = 3;
+
+    init_libs();
 
     nsfb_bbox_t box;
     uint8_t *fbptr;
@@ -31,7 +42,7 @@ int main(int argc, char **argv)
 //    nsfb_plot_pen_t pen;
 
     if (argc < 2) {
-        fename="sdl";
+        fename="plan9";
     } else {
         fename = argv[1];
     }
@@ -63,12 +74,22 @@ int main(int argc, char **argv)
         nsfb_get_geometry(nsfb, &box.x1, &box.y1, NULL);
     }
 
+/*    fprintf(stderr, "DBG: nsfb_get_geometry() retured w=%d h=%d\n",
+		box.x1, box.y1); */ /* returned w=800, h=600 */
+
+
+/*    fprintf(stderr, "DBG: Calling nsfb_get_buffer(fbstride = %d)\n",
+		fbstride); */
     nsfb_get_buffer(nsfb, &fbptr, &fbstride);
 
+
     /* claim the whole screen for update */
+    //fprintf(stderr, "DBG: Calling nsfb_claim()...\n");
     nsfb_claim(nsfb, &box);
 
+    //fprintf(stderr, "DBG: Calling plot_clg()...\n");
     nsfb_plot_clg(nsfb, 0xffffffff);
+
 
     radius = (box.x1 / 3);
 
@@ -89,11 +110,13 @@ int main(int argc, char **argv)
 	    radius -= 25;
     }
 
+
+//  fprintf(stderr, "DBG: Calling nsfb_update()...\n");
     nsfb_update(nsfb, &box);
     
     /* wait for quit event or timeout */
     while (waitloop > 0) {
-	if (nsfb_event(nsfb, &event, 1000)  == false) {
+	if (nsfb_event(nsfb, &event, 8000)  == false) {
 	    break;
 	}
 	if (event.type == NSFB_EVENT_CONTROL) {

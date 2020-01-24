@@ -48,7 +48,7 @@ void _nsfb_register_surface(const enum nsfb_type_e type, const nsfb_surface_rtns
 
 /* macro which adds a builtin command with no argument limits */
 #define NSFB_SURFACE_DEF(__name, __type, __rtns)                       \
-    static void __name##_register_surface(void) __attribute__((constructor)); \
+    void __name##_register_surface(void); \
     void __name##_register_surface(void) {                              \
         _nsfb_register_surface(__type, __rtns, #__name);               \
     }                                                                   

@@ -23,46 +23,7 @@
  *
  * \note This utterly ignores PDP endianess
  */
-#undef NSFB_BE_BYTE_ORDER
-#if defined(_WIN32)
-    /* windows does not have endian.h but uses these macros */
-    #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-        #define NSFB_BE_BYTE_ORDER
-    #endif
-#elif defined(__APPLE__)
-    /* mac os x has the include somewhere different */
-    #include <machine/endian.h>
-    #if __DARWIN_BYTE_ORDER == __DARWIN_BIG_ENDIAN
-        #define NSFB_BE_BYTE_ORDER
-    #endif
-#elif defined(__FreeBSD__)
-    /* freebsd has the include somewhere different */
-    #include <machine/endian.h>
-    #if defined(_BYTE_ORDER)
-        #if _BYTE_ORDER == _BIG_ENDIAN
-            #define NSFB_BE_BYTE_ORDER
-        #endif
-    #else
-        #error "Endian determination failed"
-    #endif
-#else
-    #include <endian.h>
-    #if defined(__BYTE_ORDER__)
-        #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-            #define NSFB_BE_BYTE_ORDER
-        #endif
-    #elif defined(__BYTE_ORDER)
-        #if __BYTE_ORDER == __BIG_ENDIAN
-            #define NSFB_BE_BYTE_ORDER
-        #endif
-    #elif defined(BYTE_ORDER)
-        #if BYTE_ORDER == BIG_ENDIAN
-            #define NSFB_BE_BYTE_ORDER
-        #endif
-    #else
-        #error "Endian determination failed"
-    #endif
-#endif
+#undef NSFB_BE_BYTE_ORDERDER
 
 /** Clears plotting area to a flat colour (if needed)
  */
