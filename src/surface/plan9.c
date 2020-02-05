@@ -33,6 +33,12 @@
 
 static Image *SrvImage=NULL;	/* Global copy of drawstate->srvimg */
 				/* that is used by eresized() */
+static bool inited;
+static int gwidth;
+static int gheight;
+static bool perform_resize; /* Used to trigger a resize of the window */
+
+Image *create_draw_image(int width, int height, ulong chan);
 
 /*
  * A 'drawstate' contain all information about the
@@ -69,16 +75,26 @@ mssleep(int ms)		/* sleep milliseconds */
 }
 
 
-/* I am not sure if this routine is needed to be implemented.
- * I think it makes a copy of the display if the resolution is
- * changed on the fly. But I am not sure that is even supported
- * in framebuffer mode
+/*
+ * It's not clear that this is any faster than the default implementation.
+ * I don't see any visible performance change when commenting
+ * nsfb->plotter_fns->copy = p9copy; in plan9_set_geometry
  */
-
 static bool
 p9copy(nsfb_t *nsfb, nsfb_bbox_t *srcbox, nsfb_bbox_t *dstbox)
 {
-    return true;
+	Point srcpt;
+	srcpt.x=srcbox->x0 + screen->r.min.x;
+	srcpt.y=srcbox->y0 + screen->r.min.y;
+
+	Rectangle dstrect;
+	dstrect.min.x = dstbox->x0 + screen->r.min.x;
+	dstrect.min.y = dstbox->y0 + screen->r.min.y;
+	dstrect.max.x = dstbox->x1 + screen->r.min.x;
+	dstrect.max.y = dstbox->y1 + screen->r.min.y;
+
+	draw(screen, dstrect, screen, nil, srcpt);
+	return true;
 }
 
 
@@ -86,19 +102,71 @@ static int
 plan9_set_geometry(nsfb_t *nsfb, int width, int height,
 		enum nsfb_format_e format)
 {
-	//fprintf(stderr, "DBG: plan9_set_geometry(%d,%d) - check p9copy()!\n",
-	//		width, height);
+	if(!inited) {
+		fprintf(stderr, "INITING display!\n");
+		if (initdraw(0, 0, "netsurf-fb") < 0){
+			fprintf(stderr, "initdraw failed\n");
+			return -1;
+		}
+		inited=true;
+	}
 
-	if (nsfb->surface_priv != NULL)
-		return -1; /* if were already initialised fail */
-	
 	nsfb->width = width;
 	nsfb->height = height;
 	nsfb->format = format;
+	
+	gwidth=width;
+	gheight=height;
 
 	/* select default sw plotters for format */
 	select_plotters(nsfb);
-	nsfb->plotter_fns->copy = p9copy;	/* empty function */
+	nsfb->plotter_fns->copy = p9copy;	
+
+	drawstate_t *drawstate = nsfb->surface_priv;
+
+	/* sanity check bpp. */
+	if ((nsfb->bpp != 32) && (nsfb->bpp != 16) && (nsfb->bpp != 8))
+		return -1;
+
+	if (drawstate == NULL)
+		drawstate = calloc(1, sizeof(drawstate_t));
+	if (drawstate == NULL)
+		return -1;	/* no memory */
+
+	/* create local framebuffer data storage */
+	drawstate->imagebytes =
+		(nsfb->bpp * nsfb->width * nsfb->height) >> 3;
+
+	if(drawstate->localimage) free(drawstate->localimage);
+	drawstate->localimage = calloc(1, drawstate->imagebytes); //create_local_image(drawstate->imagebytes);
+
+	if (drawstate->localimage == NULL){
+		fprintf(stderr, "Unable to allocate memory "
+				"for local framebuffer image\n");
+		free(drawstate);
+		return -1;
+		//drawshutdown(); /* to call this? */
+	}
+
+	/* crate a draw image on server side */
+	if(drawstate->srvimage) freeimage(drawstate->srvimage);
+	drawstate->srvimage = create_draw_image(nsfb->width,
+			nsfb->height, XRGB32);
+	SrvImage = drawstate->srvimage;		/* global copy for eresized() */
+
+	if (drawstate->srvimage == NULL){
+		fprintf(stderr, "Unable to create an image "
+				"on the display server\n");
+		free(drawstate->localimage);
+		free(drawstate);
+		return -1;
+		//drawshutdown(); /* to call this? */
+	}	
+	
+	/* ensure plotting information is stored */
+	nsfb->surface_priv = drawstate;
+	nsfb->ptr = drawstate->localimage;
+	nsfb->linelen = (nsfb->width * nsfb->bpp) / 8;
 
 	return 0;
 }
@@ -107,12 +175,9 @@ plan9_set_geometry(nsfb_t *nsfb, int width, int height,
 void
 eresized(int new)		/* callback also called by libdraw */
 {
+	perform_resize=true;
 	if (new && getwindow(display, Refmesg) < 0)
 		fprintf(stderr,"can't reattach to window");	
-
-	if(SrvImage != NULL)
-		draw(screen, screen->r, SrvImage, nil, ZP);
-	flushimage(display, 1);
 }
 
 /* create_local_image()
@@ -166,66 +231,12 @@ create_draw_image(int width, int height, ulong chan)
 static int
 plan9_initialise(nsfb_t *nsfb)
 {
-	drawstate_t *drawstate = nsfb->surface_priv;
-
-//	fprintf(stderr, "DBG: plan9_initialise()\n");
-
-	if (drawstate != NULL)
-		return -1;	/* already initialised */
-
-	/* sanity check bpp. */
-	if ((nsfb->bpp != 32) && (nsfb->bpp != 16) && (nsfb->bpp != 8))
-		return -1;
-
-	drawstate = calloc(1, sizeof(drawstate_t));
-	if (drawstate == NULL)
-		return -1;	/* no memory */
-	
+	fprintf(stderr, "Starting INITIALISE\n");
 	/* initialise the draw graphics in Plan 9 */
 
-	if (initdraw(0, 0, "netsurf-fb") < 0){
-		fprintf(stderr, "initdraw failed\n");
-		return -1;
-	}
 	einit(Emouse|Ekeyboard);
 
-	/* create local framebuffer data storage */
-
-	drawstate->imagebytes =
-		(nsfb->bpp * nsfb->width * nsfb->height) >> 3;
-
-	drawstate->localimage = create_local_image(drawstate->imagebytes);
-	drawstate->updateimage = create_local_image(drawstate->imagebytes);
-
-	if (drawstate->localimage == NULL || drawstate->updateimage == NULL){
-		fprintf(stderr, "Unable to allocate memory "
-				"for local framebuffer images\n");
-		free(drawstate);
-		return -1;
-		//drawshutdown(); /* to call this? */
-	}
-
-	/* crate a draw image on server side */
-	drawstate->srvimage = create_draw_image(nsfb->width,
-			nsfb->height, XRGB32);
-	SrvImage = drawstate->srvimage;		/* global copy for eresized() */
-
-	if (drawstate->srvimage == NULL){
-		fprintf(stderr, "Unable to create an image "
-				"on the display server\n");
-		free(drawstate->localimage);
-		free(drawstate->updateimage);
-		free(drawstate);
-		return -1;
-		//drawshutdown(); /* to call this? */
-	}	
-	
-	/* ensure plotting information is stored */
-	nsfb->surface_priv = drawstate;
-	nsfb->ptr = drawstate->localimage;
-	nsfb->linelen = (nsfb->width * nsfb->bpp) / 8;
-
-	eresized(0);	/* first drawing */
+	eresized(0);
 	return 0;
 }
 
@@ -385,6 +396,16 @@ trans_plan9_event(nsfb_t *nsfb, nsfb_event_t *nsevent, Event *evp, int e)
 				nsevent->type = NSFB_EVENT_KEY_UP;
 			button_changes++;
 		}
+		if(evp->mouse.buttons & 8) {
+			nsevent->value.keycode = NSFB_KEY_MOUSE_4;
+			nsevent->type = NSFB_EVENT_KEY_DOWN;
+			button_changes++;
+		}
+		if(evp->mouse.buttons & 16) {
+			nsevent->value.keycode = NSFB_KEY_MOUSE_5;
+			nsevent->type = NSFB_EVENT_KEY_DOWN;
+			button_changes++;
+		}
 		/* save new button status, for next event to compare with */
 		drawstate->mousebuttons = evp->mouse.buttons;
 
@@ -432,6 +453,17 @@ debug_event(nsfb_event_t *nsevent, Event *evp)
 
 static bool plan9_input(nsfb_t *nsfb, nsfb_event_t *nsevent, int timeout)
 {
+	if(perform_resize) {
+		perform_resize=false;
+		int w = screen->r.max.x - screen->r.min.x;
+		int h = screen->r.max.y - screen->r.min.y;
+		fprintf(stderr, "RESIZE_EVENT.\n");
+		nsevent->type = NSFB_EVENT_RESIZE;
+		nsevent->value.resize.w = w;
+		nsevent->value.resize.h = h;
+		return true;
+	}
+
 	drawstate_t *drawstate = nsfb->surface_priv;
 //	static int once = 0;	/* ensure etimer() is only called once */
 	int e;			/* type of event */
@@ -590,36 +622,42 @@ redraw_srvimage(drawstate_t *drawstate)
  */
 
 static int
-update_and_redraw_srvimage(drawstate_t *drawstate, Rectangle r,
-			int width, int height, int bpp)
+update_and_redraw_srvimage(drawstate_t *drawstate, int x, int y,
+		int width, int height)
 {
-	copy_image_part(drawstate->updateimage,
-			drawstate->localimage + buffer_offset(r.min, width, bpp),
-			r, width, bpp);
+	int loaded;
+	Rectangle r;
+	Point pt;
 
-	loadimage(drawstate->srvimage, r, drawstate->updateimage,
-			rect_bytes(r, bpp));
-	
-	redraw_srvimage(drawstate);
+	r.min.x=0;
+	r.min.y=0;
+	r.max.x=gwidth;
+	r.max.y=gheight;
+
+	//fprintf(stderr, "DBG: update_and_redraw_srvimage(x=%d, y=%d "
+	//		"w=%d, h=%d)\n", x, y, width, height);
+
+	loaded = loadimage(drawstate->srvimage, r, drawstate->localimage,
+			drawstate->imagebytes);
+
+	r.min.x=screen->r.min.x+x;
+	r.min.y=screen->r.min.y+y;
+	r.max.x=screen->r.min.x+x+width;
+	r.max.y=screen->r.min.y+y+height;
+
+	pt.x = x;
+	pt.y = y;
+	draw(screen, r, drawstate->srvimage, nil, pt);
+	flushimage(display, 1);
+
 	return 0;
 }
 
 static int plan9_update(nsfb_t *nsfb, nsfb_bbox_t *box)
 {
 	drawstate_t *drawstate = nsfb->surface_priv;
-	Rectangle r;
-
-	r.min.x = box->x0;
-	r.min.y = box->y0;
-	r.max.x = box->x1;
-	r.max.y = box->y1;
-
-//	fprintf(stderr, "DBG: %4d KB update (%3d,%3d) to (%3d, %3d)\n",
-//		(r.max.x-r.min.x)*(r.max.y-r.min.y)*(nsfb->bpp>>3) >> 10,
-//		r.min.x, r.min.y, r.max.x, r.max.y);
-
-	update_and_redraw_srvimage(drawstate, r,
-			nsfb->width, nsfb->height, nsfb->bpp);
+	update_and_redraw_srvimage(drawstate ,box->x0, box->y0,
+			box->x1 - box->x0, box->y1 - box->y0);
 	return 0;
 }
 
